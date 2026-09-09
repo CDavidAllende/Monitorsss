@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment variables (CRÍTICO - acá están tus credenciales de Supabase y Discord)
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+
+# Build output
+dist/
+**/dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# OS/editor
+.DS_Store
+.vscode/
+*.swp
+
+# TypeScript
+*.tsbuildinfo
