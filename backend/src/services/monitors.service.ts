@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { Monitor } from '../types/monitor';
+import { Monitor, SnapshotHistoryEntry } from '../types/monitor';
 import { CreateMonitorInput } from '../validation/monitor.schema';
 
 // Forma cruda de la fila tal como vive en Postgres (snake_case)
@@ -72,6 +72,26 @@ class MonitorsService {
     }
 
     return data ? rowToMonitor(data as MonitorRow) : null;
+  }
+
+  async getHistory(
+    monitorId: string,
+    limit: number = 100
+  ): Promise<SnapshotHistoryEntry[]> {
+    const { data, error } = await supabase
+      .from('snapshots')
+      .select(
+        'id, monitor_id, checked_at, changed, text_excerpt, extracted_value'
+      )
+      .eq('monitor_id', monitorId)
+      .order('checked_at', { ascending: true })
+      .limit(limit);
+
+    if (error) {
+      throw new Error(`Error al obtener historial: ${error.message}`);
+    }
+
+    return (data ?? []) as SnapshotHistoryEntry[];
   }
 }
 

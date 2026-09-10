@@ -33,17 +33,57 @@ monitorsRouter.get('/', async (_req: Request, res: Response) => {
   }
 });
 
-// GET /api/monitors/:id -> obtiene un monitor puntual
+// GET /api/monitors/:id/history -> historial de checks de un monitor
 monitorsRouter.get('/:id', async (req: Request, res: Response) => {
   try {
-    const monitor = await monitorsService.getById(req.params.id);
+    const { id } = req.params;
+
+    if (typeof id !== 'string') {
+      return res.status(400).json({
+        error: 'ID de monitor inválido',
+      });
+    }
+
+    const monitor = await monitorsService.getById(id);
 
     if (!monitor) {
-      return res.status(404).json({ error: 'Monitor no encontrado' });
+      return res.status(404).json({
+        error: 'Monitor no encontrado',
+      });
     }
 
     return res.json(monitor);
   } catch (err) {
-    return res.status(500).json({ error: (err as Error).message });
+    return res.status(500).json({
+      error: (err as Error).message,
+    });
   }
 });
+
+// GET /api/monitors/:id -> obtiene un monitor puntual
+monitorsRouter.get(
+  '/:id/history',
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      if (typeof id !== 'string') {
+        return res.status(400).json({
+          error: 'ID de monitor inválido',
+        });
+      }
+
+      const limit = req.query.limit
+        ? Number(req.query.limit)
+        : 100;
+
+      const history = await monitorsService.getHistory(id, limit);
+
+      return res.json(history);
+    } catch (err) {
+      return res.status(500).json({
+        error: (err as Error).message,
+      });
+    }
+  }
+);
