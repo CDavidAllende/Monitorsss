@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { monitorsService } from '../services/monitors.service';
-import { createMonitorSchema } from '../validation/monitor.schema';
+import { createMonitorSchema, updateMonitorSchema } from '../validation/monitor.schema';
 
 export const monitorsRouter = Router();
 
@@ -33,7 +33,7 @@ monitorsRouter.get('/', async (_req: Request, res: Response) => {
   }
 });
 
-// GET /api/monitors/:id/history -> historial de checks de un monitor
+// GET /api/monitors/:id -> obtiene un monitor puntual
 monitorsRouter.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -60,7 +60,37 @@ monitorsRouter.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/monitors/:id -> obtiene un monitor puntual
+// PATCH /api/monitors/:id -> actualiza un monitor existente (incluye rule_type/rule_config)
+monitorsRouter.patch('/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  if (typeof id !== 'string') {
+    return res.status(400).json({ error: 'ID de monitor inválido' });
+  }
+
+  const parsed = updateMonitorSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Datos inválidos',
+      details: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  try {
+    const monitor = await monitorsService.update(id, parsed.data);
+
+    if (!monitor) {
+      return res.status(404).json({ error: 'Monitor no encontrado' });
+    }
+
+    return res.json(monitor);
+  } catch (err) {
+    return res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// GET /api/monitors/:id/history -> historial de checks de un monitor
 monitorsRouter.get(
   '/:id/history',
   async (req: Request, res: Response) => {

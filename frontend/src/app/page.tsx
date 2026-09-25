@@ -6,8 +6,15 @@ export default async function HomePage() {
 
   return (
     <main className="max-w-3xl mx-auto p-8">
-      <h1 className="text-2xl font-bold mb-6">Monitores</h1>
-
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Monitores</h1>
+        <Link
+          href="/monitors/new"
+          className="bg-blue-600 text-white text-sm font-medium rounded-lg px-4 py-2 hover:bg-blue-700"
+        >
+          + Nuevo monitor
+        </Link>
+      </div>      
       {monitors.length === 0 ? (
         <p className="text-gray-500">No hay monitores creados todavía.</p>
       ) : (

@@ -1,5 +1,6 @@
 import { supabase } from './lib/supabase';
 import { scrapePage, ScrapeError } from './scraper';
+import { evaluateRule } from './rule-engine';
 import { sendDiscordNotification } from './notifications/discord';
 
 export interface MonitorRow {
@@ -11,33 +12,36 @@ export interface MonitorRow {
   last_checked_at: string | null;
   last_hash: string | null;
   is_active: boolean;
+  rule_type: 'hash_diff' | 'text_contains' | 'text_not_contains' | 'price_threshold' | 'availability';
+  rule_config: Record<string, any>;
+  last_rule_matched: boolean | null;
 }
 
 function isScrapeError(err: unknown): err is ScrapeError {
   return typeof err === 'object' && err !== null && 'errorType' in err;
 }
 
-/**
- * Revisa un monitor: scrapea su URL, compara el hash contra el último
- * guardado, inserta un snapshot y actualiza el monitor con el resultado.
- *
- * No reintenta en caso de fallo (eso lo maneja BullMQ en la Fase 5) —
- * aquí simplemente se registra el error y se sigue con el siguiente
- * monitor si se está revisando un lote.
- */
 export async function checkMonitor(monitor: MonitorRow): Promise<void> {
   console.log(`Revisando "${monitor.name}" (${monitor.url})...`);
 
   let scrapeResult;
   try {
-    scrapeResult = await scrapePage(
-      monitor.url,
-      monitor.selector ? { selector: monitor.selector } : {}
-    );
+    scrapeResult = await scrapePage(monitor.url, {
+  ...(monitor.selector ? { selector: monitor.selector } : {}),
+  ruleType: monitor.rule_type,
+  ruleConfig: monitor.rule_config,
+});
   } catch (err) {
     if (isScrapeError(err) && err.errorType === 'SELECTOR_NOT_FOUND') {
       console.error(`  Selector roto: ${err.message}`);
       await pauseMonitorForBrokenSelector(monitor);
+      return;
+    }
+    if (isScrapeError(err) && err.errorType === 'PRICE_EXTRACTION_FAILED') {
+      console.error(`  Extracción de precio falló: ${err.message}`);
+      // No pausamos automáticamente acá — a diferencia de un selector roto,
+      // un fallo de extracción puntual puede ser un glitch temporal de la página.
+      // Si se repite seguido, eso es tema de Fase 5 (resiliencia / reintentos).
       return;
     }
 
@@ -46,17 +50,20 @@ export async function checkMonitor(monitor: MonitorRow): Promise<void> {
     return;
   }
 
-  // Si last_hash es null, es la primera vez que se revisa este monitor:
-  // no hay nada contra qué comparar, así que no cuenta como "cambio".
-  const changed =
-    monitor.last_hash !== null && monitor.last_hash !== scrapeResult.contentHash;
+  const evaluation = evaluateRule(
+    monitor.rule_type,
+    monitor.rule_config,
+    scrapeResult,
+    monitor
+  );
 
   const { error: snapshotError } = await supabase.from('snapshots').insert({
     monitor_id: monitor.id,
     content_hash: scrapeResult.contentHash,
     text_excerpt: scrapeResult.textContent.slice(0, 500),
     status_code: scrapeResult.statusCode,
-    changed,
+    extracted_value: scrapeResult.extractedValue,
+    changed: evaluation.changed,
   });
 
   if (snapshotError) {
@@ -69,6 +76,7 @@ export async function checkMonitor(monitor: MonitorRow): Promise<void> {
     .update({
       last_checked_at: new Date().toISOString(),
       last_hash: scrapeResult.contentHash,
+      last_rule_matched: evaluation.matched,
     })
     .eq('id', monitor.id);
 
@@ -77,35 +85,27 @@ export async function checkMonitor(monitor: MonitorRow): Promise<void> {
     return;
   }
 
-  if (changed) {
-    console.log('  🚨 Cambio detectado');
+  if (evaluation.changed) {
+    console.log(`  🚨 ${evaluation.reason}`);
 
     const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
     if (webhookUrl) {
       try {
         await sendDiscordNotification(
           webhookUrl,
-          `🚨 **Cambio detectado**\n**${monitor.name}**\n${monitor.url}`
+          `🚨 **${evaluation.reason}**\n**${monitor.name}**\n${monitor.url}`
         );
       } catch (err) {
-        // Un fallo de notificación no debe tumbar el chequeo: el snapshot
-        // ya quedó guardado, eso es lo importante. Solo lo registramos.
         console.error(`  Error enviando notificación: ${(err as Error).message}`);
       }
     } else {
       console.log('  (DISCORD_WEBHOOK_URL no configurado, se omite la notificación)');
     }
   } else {
-    console.log('  Sin cambios.');
+    console.log(`  ${evaluation.reason}`);
   }
 }
 
-/**
- * Cuando el selector ya no matchea nada en la página (el sitio cambió su
- * HTML), no tiene sentido seguir intentando cada ciclo — eso solo generaría
- * ruido de error infinito. Pausamos el monitor y avisamos, para que el
- * usuario decida si actualiza el selector o lo borra.
- */
 async function pauseMonitorForBrokenSelector(monitor: MonitorRow): Promise<void> {
   const { error } = await supabase
     .from('monitors')
@@ -144,9 +144,6 @@ async function fetchMonitors(monitorId?: string): Promise<MonitorRow[]> {
 }
 
 async function main() {
-  // Uso:
-  //   npx tsx src/check-monitor.ts              -> revisa todos los monitores activos
-  //   npx tsx src/check-monitor.ts <monitor-id>  -> revisa uno en específico
   const monitorId = process.argv[2];
 
   const monitors = await fetchMonitors(monitorId);
@@ -160,11 +157,6 @@ async function main() {
     await checkMonitor(monitor);
   }
 }
-
-// Solo corre el modo CLI si este archivo se ejecuta directamente
-// (npx tsx src/check-monitor.ts). Si otro módulo lo importa (como
-// scheduler.ts), este bloque no se dispara — evita que se ejecuten
-// dos escaneos duplicados a la vez.
 if (require.main === module) {
   main();
 }
