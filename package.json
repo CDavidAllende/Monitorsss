@@ -1,0 +1,24 @@
+{
+  "name": "scraper",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "concurrently -n backend,frontend,scheduler,worker -c blue,green,yellow,magenta \"cd backend && npx tsx src/server.ts\" \"cd frontend && npm run dev\" \"cd scraper-worker && npx tsx src/scheduler.ts\" \"cd scraper-worker && npx tsx src/worker.ts\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CDavidAllende/Monitorsss.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/CDavidAllende/Monitorsss/issues"
+  },
+  "homepage": "https://github.com/CDavidAllende/Monitorsss#readme",
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

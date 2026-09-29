@@ -1,9 +1,8 @@
 import { supabase } from './lib/supabase';
-import { checkMonitor, MonitorRow } from './check-monitor';
+import { MonitorRow } from './check-monitor';
+import { monitorQueue } from './queue';
 
-// Cada cuánto el scheduler se despierta a preguntar "¿algo venció ya?".
-// No es la frecuencia del monitor en sí (esa es interval_minutes de cada
-// uno) — es la granularidad con la que revisamos si ya toca.
+
 const POLL_INTERVAL_MS = 60_000;
 
 async function fetchDueMonitors(): Promise<MonitorRow[]> {
@@ -46,13 +45,10 @@ async function tick(): Promise<void> {
       return;
     }
 
-    console.log(`${dueMonitors.length} monitor(es) vencido(s), revisando...`);
+    console.log(`${dueMonitors.length} monitor(es) vencido(s), encolando...`);
 
-    // Secuencial a propósito por ahora: simple y suficiente para el MVP.
-    // Cuando esto se mueva a BullMQ (Fase 5), cada monitor se vuelve un
-    // job independiente y sí pueden correr en paralelo de forma segura.
     for (const monitor of dueMonitors) {
-      await checkMonitor(monitor);
+      await monitorQueue.add('check', { monitorId: monitor.id }, { jobId: monitor.id });
     }
   } catch (err) {
     console.error('Error en el ciclo del scheduler:', (err as Error).message);

@@ -24,6 +24,11 @@ function isScrapeError(err: unknown): err is ScrapeError {
 export async function checkMonitor(monitor: MonitorRow): Promise<void> {
   console.log(`Revisando "${monitor.name}" (${monitor.url})...`);
 
+   await supabase
+    .from('monitors')
+    .update({ last_checked_at: new Date().toISOString() })
+    .eq('id', monitor.id);
+
   let scrapeResult;
   try {
     scrapeResult = await scrapePage(monitor.url, {
@@ -39,15 +44,12 @@ export async function checkMonitor(monitor: MonitorRow): Promise<void> {
     }
     if (isScrapeError(err) && err.errorType === 'PRICE_EXTRACTION_FAILED') {
       console.error(`  Extracción de precio falló: ${err.message}`);
-      // No pausamos automáticamente acá — a diferencia de un selector roto,
-      // un fallo de extracción puntual puede ser un glitch temporal de la página.
-      // Si se repite seguido, eso es tema de Fase 5 (resiliencia / reintentos).
       return;
     }
 
     const message = isScrapeError(err) ? err.message : (err as Error).message;
     console.error(`  Falló el scrape: ${message}`);
-    return;
+    throw err;
   }
 
   const evaluation = evaluateRule(
@@ -68,7 +70,7 @@ export async function checkMonitor(monitor: MonitorRow): Promise<void> {
 
   if (snapshotError) {
     console.error(`  Error guardando snapshot: ${snapshotError.message}`);
-    return;
+    throw new Error(snapshotError.message);
   }
 
   const { error: updateError } = await supabase
@@ -82,7 +84,7 @@ export async function checkMonitor(monitor: MonitorRow): Promise<void> {
 
   if (updateError) {
     console.error(`  Error actualizando monitor: ${updateError.message}`);
-    return;
+    throw new Error(updateError.message);
   }
 
   if (evaluation.changed) {
@@ -154,7 +156,11 @@ async function main() {
   }
 
   for (const monitor of monitors) {
-    await checkMonitor(monitor);
+    try {
+      await checkMonitor(monitor);
+    } catch (err) {
+      console.error(`Check falló para "${monitor.name}": ${(err as Error).message}`);
+    }
   }
 }
 if (require.main === module) {
