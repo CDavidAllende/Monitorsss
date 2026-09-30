@@ -1,9 +1,3 @@
-// Uso manual, sin BullMQ ni DB todavia:
-//   npx ts-node test-scraper.ts https://ejemplo.com
-//
-// Sirve para confirmar que el worker levanta el navegador, extrae
-// contenido y calcula el hash antes de conectarlo a nada mas.
-
 import { scrapePage } from './scraper';
 
 async function main() {

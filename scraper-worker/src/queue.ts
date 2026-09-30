@@ -1,4 +1,3 @@
-// scraper-worker/src/queue.ts
 import { Queue } from 'bullmq';
 import { connection } from './lib/redis';
 

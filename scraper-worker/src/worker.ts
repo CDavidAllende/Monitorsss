@@ -15,6 +15,7 @@ async function fetchMonitorById(id: string): Promise<MonitorRow> {
 const worker = new Worker(
   'check-monitor',
   async (job) => {
+    console.log(`  [${new Date().toLocaleTimeString()}] [job ${job.id}] intento ${job.attemptsMade + 1}/${job.opts.attempts}`);
     const monitor = await fetchMonitorById(job.data.monitorId);
     if (!monitor.is_active) {
       console.log(`Monitor "${monitor.name}" está pausado, se omite el job.`);
